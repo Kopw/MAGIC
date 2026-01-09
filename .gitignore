@@ -42,6 +42,8 @@ next-env.d.ts
 
 # cursor
 .cursor/
+/lib/generated/prisma
+
 #agent
 .agent
 .agents
