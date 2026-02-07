@@ -48,6 +48,8 @@ next-env.d.ts
 .windsurf
 .claude
 .augment
+
+.test-data
 #agent
 .agent
 .agents
