@@ -51,6 +51,7 @@ next-env.d.ts
 .kiro
 .pnpm-store
 .test-data
+public/generated
 #agent
 .agent
 .agents
