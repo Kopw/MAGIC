@@ -45,7 +45,8 @@ export async function POST(
       },
     })
 
-    const shareUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/share/${shareToken}`
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+    const shareUrl = `${baseUrl}/share/${shareToken}`
 
     return NextResponse.json({
       success: true,
