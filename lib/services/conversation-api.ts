@@ -40,6 +40,9 @@ export interface Message {
   content: string
   thinking?: string
   toolCalls?: unknown
+  toolResults?: unknown
+  ragContext?: unknown
+  attachments?: unknown
   createdAt: string
 }
 

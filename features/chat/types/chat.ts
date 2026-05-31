@@ -113,6 +113,34 @@ export interface ToolResult {
   }
 }
 
+export interface RagCitationSource {
+  index: number
+  chunkId: string
+  documentId: string
+  knowledgeBaseId: string
+  fileName: string
+  chunkIndex: number
+  heading?: string | null
+  snippet: string
+  vectorScore: number
+  bm25Score: number
+  rerankScore?: number | null
+  finalScore: number
+}
+
+export interface RagMessageContext {
+  search: {
+    query: string
+    rewrittenQuery?: string
+    vectorCandidates: number
+    bm25Candidates: number
+    bm25CorpusSize?: number
+    returned: number
+    rerankModel?: string
+  }
+  sources: RagCitationSource[]
+}
+
 /**
  * 工具调用状态
  * @description 运行时状态，用于显示工具执行进度
@@ -195,6 +223,7 @@ export interface Message {
   toolResults?: ToolResult[]
   /** 工具调用实例列表（运行时状态，支持多个并行工具） */
   toolInvocations?: ToolInvocation[]
+  ragContext?: RagMessageContext
   /** 是否出现错误 */
   hasError?: boolean
   /** 会话 ID（用于断点续传） */

@@ -28,6 +28,8 @@ interface ChatState {
   selectedModel: string
   enableThinking: boolean
   enableWebSearch: boolean
+  enableRag: boolean
+  selectedKnowledgeBaseIds: string[]
 }
 
 interface ChatActions {
@@ -52,6 +54,8 @@ interface ChatActions {
   setModel: (modelId: string) => void
   toggleThinking: (enabled: boolean) => void
   toggleWebSearch: (enabled: boolean) => void
+  toggleRag: (enabled: boolean) => void
+  setSelectedKnowledgeBaseIds: (ids: string[]) => void
   
   // 重置
   reset: () => void
@@ -77,6 +81,8 @@ const initialState: ChatState = {
   selectedModel: getInitialModel(),
   enableThinking: false,
   enableWebSearch: false,
+  enableRag: false,
+  selectedKnowledgeBaseIds: [],
 }
 
 export const useChatStore = create<ChatState & ChatActions>()((set, get) => ({
@@ -145,6 +151,13 @@ export const useChatStore = create<ChatState & ChatActions>()((set, get) => ({
   toggleThinking: (enabled) => set({ enableThinking: enabled }),
   
   toggleWebSearch: (enabled) => set({ enableWebSearch: enabled }),
+
+  toggleRag: (enabled) => set({ enableRag: enabled }),
+
+  setSelectedKnowledgeBaseIds: (ids) => set({
+    selectedKnowledgeBaseIds: Array.from(new Set(ids)),
+    enableRag: ids.length > 0,
+  }),
   
   // ===== 重置 =====
   reset: () => set(initialState),

@@ -11,11 +11,11 @@
 
 import { prisma } from '@/server/db/client'
 import { ConversationRepository } from '@/server/repositories/conversation.repository'
-import { MessageRepository } from '@/server/repositories/message.repository'
 import { createChatCompletion } from '@/server/services/ai/siliconflow'
 import { buildContextMessages, appendAttachments } from './prompt.builder'
 import { createSSEStream, createSSEStreamWithTools } from './stream.handler'
 import { toolRegistry } from '@/server/services/tools'
+import { buildSlidingWindowMessages, retrieveKnowledgeContext } from '@/server/services/rag/retrieval.service'
 
 
 export interface ChatRequest {
@@ -25,6 +25,8 @@ export interface ChatRequest {
   enableThinking?: boolean
   thinkingBudget?: number
   enableWebSearch?: boolean
+  enableRag?: boolean
+  knowledgeBaseIds?: string[]
   enableImageGeneration?: boolean
   imageConfig?: { prompt: string; negative_prompt?: string; image_size: string }
   userMessageId?: string
@@ -54,6 +56,8 @@ export async function handleChatRequest(
     enableThinking = false,
     thinkingBudget = 4096,
     enableWebSearch = false,
+    enableRag = false,
+    knowledgeBaseIds,
     enableImageGeneration: _enableImageGeneration = false,
     userMessageId,
     aiMessageId,
@@ -71,9 +75,20 @@ export async function handleChatRequest(
   const updatedTitle = await updateConversationTitle(conversation, content)
 
   // 4. 获取历史消息并构建上下文
-  const historyMessages = await MessageRepository.findByConversationId(conversation.id)
+  const historyMessages = await buildSlidingWindowMessages(conversation.id)
   const currentUserMessage = appendAttachments(content, attachments)
-  const contextMessages = buildContextMessages(historyMessages, currentUserMessage)
+  const ragContext = enableRag
+    ? await retrieveKnowledgeContext({
+        userId,
+        query: content,
+        knowledgeBaseIds,
+      })
+    : null
+  const contextMessages = buildContextMessages(
+    historyMessages,
+    currentUserMessage,
+    ragContext?.contextText
+  )
 
   // 5. 准备工具定义
   // - web_search: 需要用户手动开启
@@ -125,12 +140,14 @@ export async function handleChatRequest(
         contextMessages: contextMessages as Array<{ role: string; content: string }>,
         enableThinking,
         thinkingBudget,
+        ragContext,
       })
     : createSSEStream(reader, {
         messageId,
         conversationId: conversation.id,
         userId,
         sessionId,
+        ragContext,
       })
 
   return {

@@ -13,11 +13,11 @@ import { MessageContent } from '@/features/chat/components/MessageContent'
 import { MessageActions } from '@/features/chat/components/MessageActions'
 import { MessageEdit } from '@/features/chat/components/MessageEdit'
 import { Button } from '@/components/ui/button'
-import { Loader2, Edit2, RotateCw, ChevronDown, ChevronRight, Globe, XCircle } from 'lucide-react'
+import { Loader2, Edit2, RotateCw, ChevronDown, ChevronRight, Globe, XCircle, BookOpen } from 'lucide-react'
 import { MarkdownIcon } from '@/components/icons/MarkdownIcon'
 import { TextFileIcon } from '@/components/icons/TextFileIcon'
 import { cn } from '@/lib/utils'
-import type { Message, ToolInvocation, ToolResult, SearchSource } from '@/features/chat/types/chat'
+import type { Message, RagMessageContext, ToolInvocation, ToolResult, SearchSource } from '@/features/chat/types/chat'
 
 /**
  * 搜索状态组件 - 简洁风格，类似 Perplexity
@@ -174,6 +174,47 @@ function ToolResultItem({ result }: { result: ToolResult }) {
   }
   
   return null
+}
+
+function RagSources({ ragContext }: { ragContext: RagMessageContext }) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const sources = ragContext.sources || []
+  if (sources.length === 0) return null
+
+  return (
+    <div className="rounded-md border bg-muted/20 px-3 py-2 text-xs">
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="flex w-full items-center gap-2 text-muted-foreground hover:text-foreground"
+      >
+        <BookOpen className="h-3.5 w-3.5" />
+        <span>知识库引用 {sources.length}</span>
+        <span className="ml-auto">
+          {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+        </span>
+      </button>
+      {isExpanded && (
+        <div className="mt-2 space-y-2">
+          {sources.map((source) => (
+            <div key={source.chunkId} className="rounded-md bg-background/70 p-2">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex h-5 shrink-0 items-center rounded bg-emerald-500/10 px-1.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+                  #{source.index}
+                </span>
+                <span className="truncate font-medium">{source.fileName}</span>
+                <span className="text-muted-foreground">切片 {source.chunkIndex}</span>
+              </div>
+              {source.heading && (
+                <div className="mt-1 text-muted-foreground">{source.heading}</div>
+              )}
+              <p className="mt-1 line-clamp-3 text-muted-foreground">{source.snippet}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 interface ChatMessageUIProps {
@@ -359,6 +400,8 @@ export function ChatMessageUI({
           {/* 操作按钮 */}
           {/* 流式传输时：只显示重试按钮（用于中断） */}
           {/* 非流式传输时：显示所有操作按钮（复制、朗读、重试） */}
+          {message.ragContext && <RagSources ragContext={message.ragContext} />}
+
           {isActuallyStreaming && onRetry ? (
             <div className="flex items-center gap-1">
               <Button

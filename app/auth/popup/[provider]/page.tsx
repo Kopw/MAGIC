@@ -9,7 +9,7 @@
 
 import { signIn } from 'next-auth/react'
 import { useParams } from 'next/navigation'
-import { useRef, useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 export default function OAuthPopupPage() {
   const params = useParams()
@@ -17,17 +17,16 @@ export default function OAuthPopupPage() {
   const triggered = useRef(false)
 
   useEffect(() => {
+    if (triggered.current) return
+
+    triggered.current = true
+
     // 标记当前窗口是 OAuth 弹窗
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('oauth-popup', 'true')
+      void signIn(provider, { callbackUrl: '/auth/popup/success' })
     }
-  }, [])
-
-  // 只触发一次
-  if (!triggered.current && typeof window !== 'undefined') {
-    triggered.current = true
-    signIn(provider, { callbackUrl: '/auth/popup/success' })
-  }
+  }, [provider])
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">

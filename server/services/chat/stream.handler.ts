@@ -7,18 +7,40 @@
 import { MessageRepository } from '@/server/repositories/message.repository'
 import { ConversationRepository } from '@/server/repositories/conversation.repository'
 import { parseSSELine, splitSSEBuffer } from '@/lib/utils/sse'
+import type { RagContext } from '@/server/services/rag/types'
 
 export interface StreamContext {
   messageId: string
   conversationId: string
   userId: string
   sessionId: string
+  ragContext?: RagContext | null
 }
 
 export interface StreamResult {
   thinkingContent: string
   answerContent: string
   toolCallsData: unknown | null
+}
+
+function serializeRagContext(ragContext: RagContext) {
+  return {
+    search: ragContext.search,
+    sources: ragContext.sources.map((source, index) => ({
+      index: index + 1,
+      chunkId: source.chunkId,
+      documentId: source.documentId,
+      knowledgeBaseId: source.knowledgeBaseId,
+      fileName: source.fileName,
+      chunkIndex: source.chunkIndex,
+      heading: source.heading,
+      snippet: source.content.slice(0, 420),
+      vectorScore: Number(source.vectorScore.toFixed(4)),
+      bm25Score: Number(source.bm25Score.toFixed(4)),
+      rerankScore: source.rerankScore == null ? null : Number(source.rerankScore.toFixed(4)),
+      finalScore: Number(source.finalScore.toFixed(4)),
+    })),
+  }
 }
 
 /**
@@ -49,6 +71,7 @@ export function createSSEStream(
               thinkingContent,
               answerContent,
               toolCallsData,
+              ragContext: context.ragContext,
             })
 
             // 发送完成信号
@@ -142,6 +165,7 @@ async function saveMessageContent(
     answerContent: string
     toolCallsData: unknown | null
     toolResultsData?: unknown | null
+    ragContext?: RagContext | null
   }
 ): Promise<void> {
   try {
@@ -150,6 +174,7 @@ async function saveMessageContent(
       thinking: content.thinkingContent || undefined,
       toolCalls: content.toolCallsData || undefined,
       toolResults: content.toolResultsData || undefined,
+      ragContext: content.ragContext ? serializeRagContext(content.ragContext) : undefined,
     })
 
     await ConversationRepository.touch(conversationId, userId)
@@ -326,6 +351,7 @@ export function createSSEStreamWithTools(
           answerContent: contentWithImages,
           toolCallsData: allToolCalls.length > 0 ? allToolCalls : null,
           toolResultsData: allToolResultsData.length > 0 ? allToolResultsData : undefined,
+          ragContext: context.ragContext,
         })
 
         // 发送完成信号

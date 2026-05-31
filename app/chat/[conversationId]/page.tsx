@@ -10,7 +10,9 @@
  */
 
 import { memo, useEffect } from 'react'
+import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
+import { BookOpen } from 'lucide-react'
 import { ChatService } from '@/features/chat/services/chat.service'
 import { Sidebar } from '@/components/Sidebar'
 import { Header } from '@/components/Header'
@@ -21,11 +23,18 @@ import { NewChatButton } from '@/features/conversation/components/NewChatButton'
 import { ConversationSearch } from '@/features/conversation/components/ConversationSearch'
 import { MainLayout } from '@/components/MainLayout'
 import { AuthGuard } from '@/features/auth/components/AuthGuard'
+import { Button } from '@/components/ui/button'
 
 const ChatSidebar = memo(() => (
   <Sidebar>
     <div className="space-y-2">
       <NewChatButton />
+      <Button asChild variant="ghost" className="w-full justify-start gap-2">
+        <Link href="/knowledge">
+          <BookOpen className="h-4 w-4" />
+          知识库
+        </Link>
+      </Button>
       <ConversationSearch />
       <ConversationList />
     </div>

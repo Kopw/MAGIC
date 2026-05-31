@@ -11,7 +11,7 @@
  * @module components/AuthGuard
  */
 
-import { useState, useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/use-auth'
 import { LoginDialog } from '@/features/auth/components/LoginDialog'
@@ -53,7 +53,7 @@ export function AuthGuard({
 }: AuthGuardProps) {
   const router = useRouter()
   const { isLoading, isAuthenticated, showLoginDialog } = useAuth()
-  const [hasRedirected, setHasRedirected] = useState(false)
+  const hasRedirected = useRef(false)
 
   // 处理未登录时的重定向
   useEffect(() => {
@@ -62,16 +62,16 @@ export function AuthGuard({
 
     // 已登录，清除重定向标记
     if (isAuthenticated) {
-      setHasRedirected(false)
+      hasRedirected.current = false
       return
     }
 
     // 未登录且需要重定向
-    if (!isAuthenticated && redirectTo && !hasRedirected) {
-      setHasRedirected(true)
+    if (!isAuthenticated && redirectTo && !hasRedirected.current) {
+      hasRedirected.current = true
       router.push(redirectTo)
     }
-  }, [isLoading, isAuthenticated, redirectTo, hasRedirected, router])
+  }, [isLoading, isAuthenticated, redirectTo, router])
 
   // 正在加载认证状态 - 使用简化的加载界面
   if (isLoading) {

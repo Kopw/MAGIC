@@ -51,6 +51,7 @@ export function MessageList() {
   }, [messages])
   
   // TanStack Virtual 配置
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual drives this list; React Compiler can safely skip this component.
   const virtualizer = useVirtualizer({
     count: messages.length,
     getScrollElement: () => scrollContainerRef.current,

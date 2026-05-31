@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useEffect } from 'react'
 import { ThemeProvider as NextThemesProvider, useTheme } from 'next-themes'
 
 type ThemeProviderProps = {
@@ -13,16 +13,11 @@ type ThemeProviderProps = {
 
 function HighlightThemeLoader() {
   const { theme, systemTheme } = useTheme()
-  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  useEffect(() => {
-    if (!mounted) return
-
     const currentTheme = theme === 'system' ? systemTheme : theme
+    if (!currentTheme) return
+
     const isDark = currentTheme === 'dark'
 
     const oldLink = document.getElementById('highlight-theme')
@@ -38,7 +33,7 @@ function HighlightThemeLoader() {
       : 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css'
 
     document.head.appendChild(link)
-  }, [theme, systemTheme, mounted])
+  }, [theme, systemTheme])
 
   return null
 }

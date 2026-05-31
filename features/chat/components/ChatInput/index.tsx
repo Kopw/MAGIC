@@ -20,9 +20,11 @@ export function ChatInput({ conversationId }: ChatInputProps) {
   const selectedModel = useChatStore((s) => s.selectedModel)
   const enableThinking = useChatStore((s) => s.enableThinking)
   const enableWebSearch = useChatStore((s) => s.enableWebSearch)
+  const selectedKnowledgeBaseIds = useChatStore((s) => s.selectedKnowledgeBaseIds)
   const setModel = useChatStore((s) => s.setModel)
   const toggleThinking = useChatStore((s) => s.toggleThinking)
   const toggleWebSearch = useChatStore((s) => s.toggleWebSearch)
+  const setSelectedKnowledgeBaseIds = useChatStore((s) => s.setSelectedKnowledgeBaseIds)
   
   const {
     input,
@@ -48,6 +50,7 @@ export function ChatInput({ conversationId }: ChatInputProps) {
       selectedModel={selectedModel}
       enableThinking={enableThinking}
       enableWebSearch={enableWebSearch}
+      selectedKnowledgeBaseIds={selectedKnowledgeBaseIds}
       isLoading={isSendingMessage}
       isRecording={isRecording}
       isTranscribing={isTranscribing}
@@ -57,6 +60,7 @@ export function ChatInput({ conversationId }: ChatInputProps) {
       _onModelChange={setModel}
       onThinkingToggle={toggleThinking}
       onWebSearchToggle={toggleWebSearch}
+      onKnowledgeSelectionChange={setSelectedKnowledgeBaseIds}
       onStartRecording={startRecording}
       onStopRecording={stopRecording}
       onCancelRecording={cancelRecording}

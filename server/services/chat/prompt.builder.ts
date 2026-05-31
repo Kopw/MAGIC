@@ -12,6 +12,13 @@ const BASE_PROMPT = `You are a helpful assistant. 你是一个友好的 AI 助�
 /**
  * 富媒体格式说明
  */
+const RAG_PROMPT = `
+当消息中包含 <knowledge_context> 时，你必须优先基于这些资料回答。
+- 资料不足以回答时，直接说明“知识库资料不足”，不要编造。
+- 回答中涉及知识库事实时，尽量用 [1]、[2] 这样的编号标注来源。
+- 不要泄露 chunk 分数、embedding、BM25 或 rerank 的内部细节，除非用户明确询问实现原理。
+`
+
 const MEDIA_FORMAT_PROMPT = `
 当需要展示特定类型的信息时，请使用以下格式：
 
@@ -44,7 +51,7 @@ const MEDIA_FORMAT_PROMPT = `
  * 构建完整的系统提示词
  */
 export function buildSystemPrompt(): string {
-  return BASE_PROMPT + MEDIA_FORMAT_PROMPT
+  return BASE_PROMPT + RAG_PROMPT + MEDIA_FORMAT_PROMPT
 }
 
 /**
@@ -52,8 +59,13 @@ export function buildSystemPrompt(): string {
  */
 export function buildContextMessages(
   historyMessages: Array<{ role: string; content: string }>,
-  currentUserMessage: string
+  currentUserMessage: string,
+  ragContext?: string | null
 ): Array<{ role: string; content: string }> {
+  const userContent = ragContext
+    ? `<knowledge_context>\n${ragContext}\n</knowledge_context>\n\n<user_question>\n${currentUserMessage}\n</user_question>`
+    : currentUserMessage
+
   return [
     {
       role: 'system',
@@ -67,7 +79,7 @@ export function buildContextMessages(
     // 当前用户消息
     {
       role: 'user',
-      content: currentUserMessage,
+      content: userContent,
     },
   ]
 }

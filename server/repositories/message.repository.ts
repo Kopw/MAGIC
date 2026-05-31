@@ -105,6 +105,7 @@ export const MessageRepository = {
       thinking?: string
       toolCalls?: Prisma.InputJsonValue
       toolResults?: Prisma.InputJsonValue
+      ragContext?: Prisma.InputJsonValue
     }
   ) {
     return prisma.message.update({

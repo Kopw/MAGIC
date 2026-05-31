@@ -45,6 +45,8 @@ module.exports = {
     'type-empty': [2, 'never'],
     'subject-empty': [2, 'never'],
     'subject-full-stop': [2, 'never', '.'],
+    // Allow Chinese subjects and technical acronyms such as RAG.
+    'subject-case': [0],
     'header-max-length': [2, 'always', 100],
   },
 }

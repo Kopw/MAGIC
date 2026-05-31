@@ -45,7 +45,8 @@ next-env.d.ts
 /lib/generated/prisma
 
 # Windsurf
-prisma/migrations/
+!prisma/migrations/
+!prisma/migrations/**
 .windsurf
 .claude
 .augment

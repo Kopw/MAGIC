@@ -122,6 +122,8 @@ export const ChatService = {
           model: store.selectedModel,
           enableThinking: store.enableThinking,
           enableWebSearch: store.enableWebSearch,
+          enableRag: store.enableRag,
+          knowledgeBaseIds: store.selectedKnowledgeBaseIds,
           enableImageGeneration,
           imageConfig,
           thinkingBudget: 4096,

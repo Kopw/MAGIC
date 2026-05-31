@@ -10,19 +10,20 @@ datasource db {
 }
 
 model User {
-  id            String         @id @default(cuid())
-  username      String?        @unique
-  password      String?
-  email         String?        @unique
-  emailVerified DateTime?
-  name          String?
-  image         String?
-  apiKey        String?
-  createdAt     DateTime       @default(now())
-  conversations Conversation[]
-  accounts      Account[]
-  sessions      Session[]
-  
+  id             String          @id @default(cuid())
+  username       String?         @unique
+  password       String?
+  email          String?         @unique
+  emailVerified  DateTime?
+  name           String?
+  image          String?
+  apiKey         String?
+  createdAt      DateTime        @default(now())
+  conversations  Conversation[]
+  knowledgeBases KnowledgeBase[]
+  accounts       Account[]
+  sessions       Session[]
+
   @@index([email])
 }
 
@@ -52,7 +53,7 @@ model Session {
   userId       String
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   @@index([userId])
 }
 
@@ -124,7 +125,66 @@ model Message {
   toolCalls      Json?
   toolResults    Json?        // 工具执行结果 [{ toolCallId, name, result }]
   attachments    Json?        // 文件附件列表 [{ name, type, size }]
+  ragContext     Json?
   createdAt      DateTime     @default(now())
 
   @@index([conversationId, createdAt])
+}
+
+model KnowledgeBase {
+  id          String              @id @default(cuid())
+  userId      String
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  documents   KnowledgeDocument[]
+  chunks      KnowledgeChunk[]
+
+  @@index([userId, updatedAt(sort: Desc)])
+}
+
+model KnowledgeDocument {
+  id              String           @id @default(cuid())
+  knowledgeBaseId String
+  knowledgeBase   KnowledgeBase    @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  userId          String
+  fileName        String
+  mimeType        String?
+  size            Int?
+  contentHash     String
+  rawText         String           @db.Text
+  status          String           @default("processing")
+  errorMessage    String?
+  chunkCount      Int              @default(0)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  chunks          KnowledgeChunk[]
+
+  @@unique([knowledgeBaseId, contentHash])
+  @@index([knowledgeBaseId, createdAt(sort: Desc)])
+  @@index([userId])
+  @@index([status])
+}
+
+model KnowledgeChunk {
+  id              String            @id @default(cuid())
+  documentId      String
+  document        KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  knowledgeBaseId String
+  knowledgeBase   KnowledgeBase     @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  userId          String
+  chunkIndex      Int
+  content         String            @db.Text
+  heading         String?
+  tokenCount      Int?
+  metadata        Json?
+  embedding       Unsupported("vector(1024)")?
+  createdAt       DateTime          @default(now())
+
+  @@unique([documentId, chunkIndex])
+  @@index([knowledgeBaseId])
+  @@index([userId])
+  @@index([documentId])
 }

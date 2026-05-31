@@ -1,14 +1,13 @@
 /**
  * 分享页面头部组件
- * 
- * Hydration Mismatch 处理：
- * - 时间戳使用 useEffect 延迟渲染，避免 SSR/CSR 时区差异导致的不一致
+ *
+ * 时间戳在 hydration 后格式化，避免 SSR/CSR 时区差异导致不一致。
  */
 
 'use client'
 
-import { useState, useEffect } from 'react'
 import { Calendar, Eye, User } from 'lucide-react'
+import { useClientValue } from '@/lib/hooks/use-client-value'
 
 interface ShareHeaderProps {
   conversation: {
@@ -20,52 +19,40 @@ interface ShareHeaderProps {
   }
 }
 
-/**
- * 格式化分享日期
- * 仅在客户端调用，避免 SSR/CSR 时区差异
- */
 function formatSharedDate(isoString: string): string {
   return new Date(isoString).toLocaleDateString('zh-CN', {
     year: 'numeric',
     month: 'long',
-    day: 'numeric'
+    day: 'numeric',
   })
 }
 
 export function ShareHeader({ conversation }: ShareHeaderProps) {
-  // Hydration Mismatch 处理：时间戳延迟至 useEffect 阶段渲染
-  const [sharedDate, setSharedDate] = useState(() => {
-    // SSR 安全的初始值：只取日期部分
-    return conversation.sharedAt.split('T')[0]
-  })
-  
-  useEffect(() => {
-    // 客户端 hydration 后，显示本地化日期
-    setSharedDate(formatSharedDate(conversation.sharedAt))
-  }, [conversation.sharedAt])
-  
+  const sharedDate = useClientValue(
+    () => formatSharedDate(conversation.sharedAt),
+    conversation.sharedAt.split('T')[0]
+  )
+
   return (
     <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto max-w-4xl px-4 py-4">
-        {/* 标题部分 */}
         <div className="mb-3">
           <h1 className="text-2xl font-bold text-foreground">
             {conversation.title}
           </h1>
         </div>
-        
-        {/* 元信息 */}
+
         <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
           <div className="flex items-center gap-1.5">
             <User className="h-4 w-4" />
             <span>{conversation.author}</span>
           </div>
-          
+
           <div className="flex items-center gap-1.5">
             <Calendar className="h-4 w-4" />
             <span>分享于 {sharedDate}</span>
           </div>
-          
+
           {conversation.viewCount !== undefined && (
             <div className="flex items-center gap-1.5">
               <Eye className="h-4 w-4" />
