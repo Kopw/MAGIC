@@ -94,6 +94,7 @@ export const ChatService = {
     if (createUserMessage && userMessageId) {
       store.addMessage({
         id: userMessageId,
+        conversationId,
         role: 'user',
         content,
         attachments,
@@ -103,6 +104,7 @@ export const ChatService = {
     // 添加 AI 占位消息
     store.addMessage({
       id: aiMessageId,
+      conversationId,
       role: 'assistant',
       content: '',
       thinking: '',
@@ -186,6 +188,8 @@ export const ChatService = {
               s.updateMessage(messageId, { displayState: 'streaming' })
             }
             answerBuffer.append(data.content) // 使用 buffer 而非直接 setState
+          } else if (data.type === 'context_usage' && data.contextUsage) {
+            s.updateMessage(messageId, { contextUsage: data.contextUsage })
           } else if (data.type === 'tool_call') {
             // 工具调用开始 - 添加新的 invocation（不经过 buffer）
             const msg = s.messages.find((m) => m.id === messageId)

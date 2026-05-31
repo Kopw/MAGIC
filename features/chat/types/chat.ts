@@ -25,9 +25,19 @@ export type MessageRole = 'user' | 'assistant' | 'system'
  * - tool_calls: 工具调用请求
  * - tool_call: 工具调用开始（用于显示搜索状态）
  * - tool_result: 工具调用结果
+ * - context_usage: 本次请求上下文用量
  * - complete: 流式传输完成
  */
-export type SSEEventType = 'thinking' | 'answer' | 'tool_calls' | 'tool_call' | 'tool_result' | 'complete'
+export type SSEEventType =
+  | 'thinking'
+  | 'answer'
+  | 'tool_calls'
+  | 'tool_call'
+  | 'tool_result'
+  | 'context_usage'
+  | 'complete'
+
+import type { ContextUsage } from '@/lib/types/context-usage'
 
 /**
  * 工具调用结构
@@ -211,6 +221,8 @@ export interface FileAttachment {
 export interface Message {
   /** 消息唯一标识 */
   id: string
+  /** 所属会话 ID */
+  conversationId?: string
   /** 消息角色 */
   role: MessageRole
   /** 消息文本内容 */
@@ -224,6 +236,8 @@ export interface Message {
   /** 工具调用实例列表（运行时状态，支持多个并行工具） */
   toolInvocations?: ToolInvocation[]
   ragContext?: RagMessageContext
+  /** 本次生成实际使用的上下文统计 */
+  contextUsage?: ContextUsage
   /** 是否出现错误 */
   hasError?: boolean
   /** 会话 ID（用于断点续传） */
@@ -296,6 +310,8 @@ export interface SSEData {
   height?: number
   /** 搜索来源列表（web_search tool_result 事件） */
   sources?: SearchSource[]
+  /** 本次请求上下文用量（context_usage 事件） */
+  contextUsage?: ContextUsage
 }
 
 /**

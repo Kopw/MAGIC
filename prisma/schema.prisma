@@ -109,6 +109,9 @@ model Conversation {
   lastViewedAt DateTime?
   isPinned     Boolean   @default(false)
   pinnedAt     DateTime?
+  summary      String?   @db.Text
+  summaryUntil DateTime?
+  summaryUpdatedAt DateTime?
 
   @@index([userId, updatedAt(sort: Desc)])
   @@index([shareToken])

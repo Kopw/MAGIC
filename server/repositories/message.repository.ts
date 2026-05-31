@@ -33,6 +33,104 @@ export const MessageRepository = {
   },
 
   /**
+   * 获取指定时间之前的已完成历史消息
+   */
+  async findCompletedBefore(
+    conversationId: string,
+    before: Date,
+    options: {
+      after?: Date | null
+      limit?: number
+    } = {}
+  ) {
+    const messages = await prisma.message.findMany({
+      where: {
+        conversationId,
+        createdAt: {
+          ...(options.after ? { gt: options.after } : {}),
+          lt: before,
+        },
+        OR: [
+          { role: { not: 'assistant' } },
+          { content: { not: '' } },
+          { thinking: { not: null } },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      take: options.limit,
+    })
+
+    return messages.reverse()
+  },
+
+  /**
+   * 统计指定范围内的已完成消息
+   */
+  async countCompletedInRange(
+    conversationId: string,
+    options: {
+      after?: Date | null
+      before?: Date | null
+      includeBefore?: boolean
+    } = {}
+  ) {
+    return prisma.message.count({
+      where: {
+        conversationId,
+        createdAt: {
+          ...(options.after ? { gt: options.after } : {}),
+          ...(options.before
+            ? options.includeBefore
+              ? { lte: options.before }
+              : { lt: options.before }
+            : {}),
+        },
+        OR: [
+          { role: { not: 'assistant' } },
+          { content: { not: '' } },
+          { thinking: { not: null } },
+        ],
+      },
+    })
+  },
+
+  /**
+   * 获取需要纳入摘要的旧消息
+   */
+  async findMessagesForSummary(
+    conversationId: string,
+    options: {
+      after?: Date | null
+      before: Date
+      keepRecent: number
+      limit: number
+    }
+  ) {
+    const where: Prisma.MessageWhereInput = {
+      conversationId,
+      createdAt: {
+        ...(options.after ? { gt: options.after } : {}),
+        lt: options.before,
+      },
+      OR: [
+        { role: { not: 'assistant' } },
+        { content: { not: '' } },
+        { thinking: { not: null } },
+      ],
+    }
+    const messageCount = await prisma.message.count({ where })
+    const summarizableCount = Math.max(messageCount - options.keepRecent, 0)
+
+    if (summarizableCount === 0) return []
+
+    return prisma.message.findMany({
+      where,
+      orderBy: { createdAt: 'asc' },
+      take: Math.min(summarizableCount, options.limit),
+    })
+  },
+
+  /**
    * 分页获取消息（游标分页）
    */
   async findPaginated(

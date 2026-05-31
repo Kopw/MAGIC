@@ -8,6 +8,7 @@ import { MessageRepository } from '@/server/repositories/message.repository'
 import { ConversationRepository } from '@/server/repositories/conversation.repository'
 import { parseSSELine, splitSSEBuffer } from '@/lib/utils/sse'
 import type { RagContext } from '@/server/services/rag/types'
+import type { ContextUsage } from '@/lib/types/context-usage'
 
 export interface StreamContext {
   messageId: string
@@ -15,6 +16,7 @@ export interface StreamContext {
   userId: string
   sessionId: string
   ragContext?: RagContext | null
+  contextUsage?: ContextUsage
 }
 
 export interface StreamResult {
@@ -61,6 +63,8 @@ export function createSSEStream(
         let thinkingContent = ''
         let answerContent = ''
         let toolCallsData = null
+
+        sendContextUsageEvent(controller, encoder, context.contextUsage, sessionId)
 
         while (true) {
           const { done, value } = await reader.read()
@@ -153,6 +157,21 @@ function sendEvent(
   }
 }
 
+function sendContextUsageEvent(
+  controller: ReadableStreamDefaultController,
+  encoder: TextEncoder,
+  contextUsage: ContextUsage | undefined,
+  sessionId: string
+): void {
+  if (!contextUsage) return
+
+  sendEvent(controller, encoder, {
+    type: 'context_usage',
+    contextUsage,
+    sessionId,
+  })
+}
+
 /**
  * 保存消息内容到数据库
  */
@@ -190,9 +209,10 @@ import { executeToolCalls, formatToolMessages } from '@/server/services/tools/ha
 
 // 消息类型（支持 tool_calls）
 type ChatMessage = {
-  role: string
+  role: 'system' | 'user' | 'assistant' | 'tool'
   content: string | null
   tool_calls?: ToolCall[]
+  tool_call_id?: string
 }
 
 export interface StreamContextWithTools extends StreamContext {
@@ -222,6 +242,7 @@ export function createSSEStreamWithTools(
       try {
         let thinkingContent = ''
         let finalAnswerContent = ''
+        sendContextUsageEvent(controller, encoder, context.contextUsage, sessionId)
         
         // 累积所有轮次的工具调用和结果
         const allToolCalls: ToolCall[] = []
@@ -297,7 +318,7 @@ export function createSSEStreamWithTools(
           // 发起下一轮 AI 请求
           const { reader: nextReader } = await createChatCompletion(apiKey, {
             model,
-            messages: currentMessages as Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+            messages: currentMessages,
             enableThinking,
             thinkingBudget,
             tools: toolRegistry.getToolDefinitions(),

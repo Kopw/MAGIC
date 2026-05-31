@@ -12,10 +12,11 @@
 import { prisma } from '@/server/db/client'
 import { ConversationRepository } from '@/server/repositories/conversation.repository'
 import { createChatCompletion } from '@/server/services/ai/siliconflow'
-import { buildContextMessages, appendAttachments } from './prompt.builder'
+import { buildContextMessages } from './prompt.builder'
 import { createSSEStream, createSSEStreamWithTools } from './stream.handler'
 import { toolRegistry } from '@/server/services/tools'
-import { buildSlidingWindowMessages, retrieveKnowledgeContext } from '@/server/services/rag/retrieval.service'
+import { retrieveKnowledgeContext } from '@/server/services/rag/retrieval.service'
+import { buildManagedConversationContext, buildRequestContextUsage } from './context-manager'
 
 
 export interface ChatRequest {
@@ -69,14 +70,27 @@ export async function handleChatRequest(
 
   // 2. 创建消息记录
   const messageId = aiMessageId || generateMessageId()
-  await createMessages(conversation.id, content, userMessageId, messageId, attachments)
+  const userMessageCreatedAt = await createMessages(
+    conversation.id,
+    content,
+    userMessageId,
+    messageId,
+    attachments
+  )
 
   // 3. 更新会话标题（如果是第一条消息）
   const updatedTitle = await updateConversationTitle(conversation, content)
 
-  // 4. 获取历史消息并构建上下文
-  const historyMessages = await buildSlidingWindowMessages(conversation.id)
-  const currentUserMessage = appendAttachments(content, attachments)
+  // 4. 管理对话上下文：旧消息摘要 + 最近窗口 + 当前附件预算裁剪
+  const managedContext = await buildManagedConversationContext({
+    conversation,
+    apiKey,
+    model,
+    currentContent: content,
+    currentUserCreatedAt: userMessageCreatedAt,
+    currentUserMessagePersisted: Boolean(userMessageId),
+    attachments,
+  })
   const ragContext = enableRag
     ? await retrieveKnowledgeContext({
         userId,
@@ -84,11 +98,19 @@ export async function handleChatRequest(
         knowledgeBaseIds,
       })
     : null
-  const contextMessages = buildContextMessages(
-    historyMessages,
-    currentUserMessage,
-    ragContext?.contextText
-  )
+  const contextMessages = buildContextMessages({
+    historyMessages: managedContext.historyMessages,
+    currentUserMessage: managedContext.currentUserMessage,
+    conversationSummary: managedContext.summary,
+    ragContext: ragContext?.contextText,
+  })
+  const contextUsage = await buildRequestContextUsage({
+    conversation: managedContext.conversation,
+    historyMessages: managedContext.historyMessages,
+    currentUserMessage: content,
+    attachments,
+    ragContext,
+  })
 
   // 5. 准备工具定义
   // - web_search: 需要用户手动开启
@@ -118,7 +140,7 @@ export async function handleChatRequest(
   // 6. 调用 AI API
   const { reader } = await createChatCompletion(apiKey, {
     model,
-    messages: contextMessages as Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+    messages: contextMessages,
     enableThinking,
     thinkingBudget,
     tools,
@@ -137,10 +159,11 @@ export async function handleChatRequest(
         sessionId,
         apiKey,
         model,
-        contextMessages: contextMessages as Array<{ role: string; content: string }>,
+        contextMessages,
         enableThinking,
         thinkingBudget,
         ragContext,
+        contextUsage,
       })
     : createSSEStream(reader, {
         messageId,
@@ -148,6 +171,7 @@ export async function handleChatRequest(
         userId,
         sessionId,
         ragContext,
+        contextUsage,
       })
 
   return {
@@ -184,7 +208,7 @@ async function createMessages(
   userMessageId: string | undefined,
   aiMessageId: string,
   attachments?: Array<{ name: string; content: string; type: string; size: number }>
-): Promise<void> {
+): Promise<Date> {
   const now = new Date()
   const userMessageTime = now
   const assistantMessageTime = new Date(now.getTime() + 1)
@@ -222,6 +246,8 @@ async function createMessages(
       },
     })
   }
+
+  return userMessageTime
 }
 
 /**

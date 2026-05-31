@@ -80,6 +80,27 @@ export const ConversationRepository = {
   },
 
   /**
+   * 更新会话长期摘要进度
+   */
+  async updateSummary(
+    id: string,
+    data: {
+      summary: string
+      summaryUntil: Date
+      summaryUpdatedAt?: Date
+    }
+  ) {
+    return prisma.conversation.update({
+      where: { id },
+      data: {
+        summary: data.summary,
+        summaryUntil: data.summaryUntil,
+        summaryUpdatedAt: data.summaryUpdatedAt ?? new Date(),
+      },
+    })
+  },
+
+  /**
    * 删除会话
    */
   async delete(id: string, userId: string) {

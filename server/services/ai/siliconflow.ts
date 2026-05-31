@@ -9,8 +9,10 @@ import { getModelById } from '@/features/chat/constants/models'
 const SILICONFLOW_API_URL = 'https://api.siliconflow.cn/v1/chat/completions'
 
 export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant'
-  content: string
+  role: 'system' | 'user' | 'assistant' | 'tool'
+  content: string | null
+  tool_call_id?: string
+  tool_calls?: unknown[]
 }
 
 export interface ChatCompletionOptions {
@@ -19,10 +21,20 @@ export interface ChatCompletionOptions {
   enableThinking?: boolean
   thinkingBudget?: number
   tools?: unknown[]
+  maxTokens?: number
+  temperature?: number
 }
 
 export interface SiliconFlowResponse {
   reader: ReadableStreamDefaultReader<Uint8Array>
+}
+
+interface ChatCompletionTextResponse {
+  choices?: Array<{
+    message?: {
+      content?: string
+    }
+  }>
 }
 
 /**
@@ -41,8 +53,8 @@ export async function createChatCompletion(
     model,
     messages,
     stream: true,
-    temperature: 0.7,
-    max_tokens: enableThinking || modelInfo?.isReasoningModel ? 4096 : 1024,
+    temperature: options.temperature ?? 0.7,
+    max_tokens: options.maxTokens ?? (enableThinking || modelInfo?.isReasoningModel ? 4096 : 1024),
   }
 
   // Reasoning 模型：只用 thinking_budget
@@ -80,4 +92,54 @@ export async function createChatCompletion(
   }
 
   return { reader }
+}
+
+/**
+ * 调用 SiliconFlow Chat Completion API（非流式文本）
+ */
+export async function createChatCompletionText(
+  apiKey: string,
+  options: Omit<ChatCompletionOptions, 'tools'> & { maxTokens?: number }
+): Promise<string> {
+  const {
+    model,
+    messages,
+    enableThinking = false,
+    thinkingBudget = 4096,
+    maxTokens = 1024,
+    temperature = 0.2,
+  } = options
+
+  const modelInfo = getModelById(model)
+  const requestBody: Record<string, unknown> = {
+    model,
+    messages,
+    stream: false,
+    temperature,
+    max_tokens: maxTokens,
+  }
+
+  if (modelInfo?.isReasoningModel) {
+    requestBody.thinking_budget = thinkingBudget
+  } else if (enableThinking && modelInfo?.supportsThinkingToggle) {
+    requestBody.enable_thinking = true
+    requestBody.thinking_budget = thinkingBudget
+  }
+
+  const response = await fetch(SILICONFLOW_API_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(requestBody),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`SiliconFlow API error: ${response.status} - ${errorText}`)
+  }
+
+  const payload = (await response.json()) as ChatCompletionTextResponse
+  return payload.choices?.[0]?.message?.content?.trim() || ''
 }

@@ -9,6 +9,12 @@
  */
 const BASE_PROMPT = `You are a helpful assistant. 你是一个友好的 AI 助手。`
 
+const MEMORY_PROMPT = `
+当消息中包含 <conversation_summary> 时，它是较早对话的压缩记忆。
+- 你应该把它当作背景上下文使用，但如果它与最近消息冲突，以最近消息为准。
+- 不要向用户暴露摘要机制，除非用户明确询问上下文管理实现。
+`
+
 /**
  * 富媒体格式说明
  */
@@ -51,37 +57,54 @@ const MEDIA_FORMAT_PROMPT = `
  * 构建完整的系统提示词
  */
 export function buildSystemPrompt(): string {
-  return BASE_PROMPT + RAG_PROMPT + MEDIA_FORMAT_PROMPT
+  return BASE_PROMPT + MEMORY_PROMPT + RAG_PROMPT + MEDIA_FORMAT_PROMPT
 }
 
 /**
  * 构建消息上下文
  */
 export function buildContextMessages(
-  historyMessages: Array<{ role: string; content: string }>,
-  currentUserMessage: string,
-  ragContext?: string | null
-): Array<{ role: string; content: string }> {
-  const userContent = ragContext
-    ? `<knowledge_context>\n${ragContext}\n</knowledge_context>\n\n<user_question>\n${currentUserMessage}\n</user_question>`
-    : currentUserMessage
-
-  return [
+  input: {
+    historyMessages: Array<{ role: string; content: string }>
+    currentUserMessage: string
+    ragContext?: string | null
+    conversationSummary?: string | null
+  }
+): Array<{ role: 'system' | 'user' | 'assistant'; content: string }> {
+  const userContent = input.ragContext
+    ? `<knowledge_context>\n${input.ragContext}\n</knowledge_context>\n\n<user_question>\n${input.currentUserMessage}\n</user_question>`
+    : input.currentUserMessage
+  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
     {
       role: 'system',
       content: buildSystemPrompt(),
     },
-    // 历史消息
-    ...historyMessages.map((msg) => ({
-      role: msg.role,
+  ]
+
+  if (input.conversationSummary) {
+    messages.push({
+      role: 'system',
+      content: `<conversation_summary>\n${input.conversationSummary}\n</conversation_summary>`,
+    })
+  }
+
+  messages.push(
+    ...input.historyMessages.map((msg) => ({
+      role: normalizePromptRole(msg.role),
       content: msg.content,
     })),
-    // 当前用户消息
     {
       role: 'user',
       content: userContent,
     },
-  ]
+  )
+
+  return messages
+}
+
+function normalizePromptRole(role: string): 'system' | 'user' | 'assistant' {
+  if (role === 'assistant' || role === 'system') return role
+  return 'user'
 }
 
 /**

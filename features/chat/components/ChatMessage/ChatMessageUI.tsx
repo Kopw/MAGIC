@@ -13,11 +13,12 @@ import { MessageContent } from '@/features/chat/components/MessageContent'
 import { MessageActions } from '@/features/chat/components/MessageActions'
 import { MessageEdit } from '@/features/chat/components/MessageEdit'
 import { Button } from '@/components/ui/button'
-import { Loader2, Edit2, RotateCw, ChevronDown, ChevronRight, Globe, XCircle, BookOpen } from 'lucide-react'
+import { Loader2, Edit2, RotateCw, ChevronDown, ChevronRight, Globe, XCircle, BookOpen, Gauge } from 'lucide-react'
 import { MarkdownIcon } from '@/components/icons/MarkdownIcon'
 import { TextFileIcon } from '@/components/icons/TextFileIcon'
 import { cn } from '@/lib/utils'
 import type { Message, RagMessageContext, ToolInvocation, ToolResult, SearchSource } from '@/features/chat/types/chat'
+import type { ContextUsage } from '@/lib/types/context-usage'
 
 /**
  * 搜索状态组件 - 简洁风格，类似 Perplexity
@@ -217,6 +218,47 @@ function RagSources({ ragContext }: { ragContext: RagMessageContext }) {
   )
 }
 
+function MessageContextUsage({ usage }: { usage: ContextUsage }) {
+  const [isExpanded, setIsExpanded] = useState(false)
+
+  return (
+    <div className="rounded-md border bg-muted/20 px-3 py-2 text-xs">
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="flex w-full items-center gap-2 text-muted-foreground hover:text-foreground"
+      >
+        <Gauge className="h-3.5 w-3.5" />
+        <span>本次上下文约 {formatNumber(usage.totalEstimatedTokens)} Token</span>
+        <span className="ml-auto">
+          {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+        </span>
+      </button>
+      {isExpanded && (
+        <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <ContextUsageItem label="摘要" value={usage.hasSummary ? `${formatNumber(usage.summaryEstimatedTokens)} Token` : '未启用'} />
+          <ContextUsageItem label="历史" value={`${usage.activeHistoryMessages} 条 / ${formatNumber(usage.activeHistoryEstimatedTokens)} Token`} />
+          <ContextUsageItem label="当前消息" value={`${formatNumber(usage.currentMessageEstimatedTokens)} Token`} />
+          <ContextUsageItem label="知识库" value={`${usage.ragSources} 段 / ${formatNumber(usage.ragEstimatedTokens)} Token`} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ContextUsageItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md bg-background/70 px-2 py-1.5">
+      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className="mt-0.5 truncate font-medium text-foreground">{value}</div>
+    </div>
+  )
+}
+
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat('zh-CN').format(value)
+}
+
 interface ChatMessageUIProps {
   /** 消息数据 */
   message: Message
@@ -401,6 +443,8 @@ export function ChatMessageUI({
           {/* 流式传输时：只显示重试按钮（用于中断） */}
           {/* 非流式传输时：显示所有操作按钮（复制、朗读、重试） */}
           {message.ragContext && <RagSources ragContext={message.ragContext} />}
+
+          {message.contextUsage && <MessageContextUsage usage={message.contextUsage} />}
 
           {isActuallyStreaming && onRetry ? (
             <div className="flex items-center gap-1">
