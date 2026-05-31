@@ -60,7 +60,7 @@ export function ContextUsagePanel({ conversationId }: ContextUsagePanelProps) {
       toast({
         title: result.compressed ? '上下文已压缩' : '暂无可压缩内容',
         description: result.compressed
-          ? `已压缩 ${result.summarizedMessages} 条旧消息。`
+          ? `已压缩 ${result.summarizedMessages} 条消息。`
           : result.message,
         variant: result.compressed ? 'success' : 'default',
       })

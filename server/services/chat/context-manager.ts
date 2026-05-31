@@ -6,6 +6,7 @@ import type { RagContext } from '@/server/services/rag/types'
 import type { ContextCompressionResult, ContextUsage } from '@/lib/types/context-usage'
 
 const RECENT_MESSAGE_LIMIT = 16
+const MANUAL_COMPRESSION_KEEP_RECENT = 0
 const MIN_MESSAGES_TO_SUMMARIZE = 10
 const SUMMARY_BATCH_LIMIT = 64
 const MAX_SUMMARY_ROUNDS = 4
@@ -150,7 +151,7 @@ export async function compressConversationContext(input: {
     compressed,
     summarizedMessages: compressed ? Math.max(contextUsage.compressedMessages - previousCompressedMessages, 0) : 0,
     contextUsage,
-    message: compressed ? '上下文已压缩。' : '当前暂无可压缩的旧消息。',
+    message: compressed ? '上下文已压缩。' : '当前暂无可压缩的消息。',
   }
 }
 
@@ -171,7 +172,7 @@ async function refreshConversationSummary(input: {
         {
           after: working.summaryUntil,
           before: input.before,
-          keepRecent: RECENT_MESSAGE_LIMIT,
+          keepRecent: input.force ? MANUAL_COMPRESSION_KEEP_RECENT : RECENT_MESSAGE_LIMIT,
           limit: SUMMARY_BATCH_LIMIT,
         }
       )
@@ -370,7 +371,9 @@ async function buildContextUsage(input: {
   const messagesAfterSummary = await MessageRepository.countCompletedInRange(input.conversation.id, {
     after: input.conversation.summaryUntil,
   })
-  const compressibleMessages = Math.max(messagesAfterSummary - RECENT_MESSAGE_LIMIT, 0)
+  const compressibleMessages = input.mode === 'conversation'
+    ? messagesAfterSummary
+    : Math.max(messagesAfterSummary - RECENT_MESSAGE_LIMIT, 0)
   const systemAndWrapperChars = summary || ragChars ? SYSTEM_AND_WRAPPER_ESTIMATED_CHARS : 1800
 
   return {
