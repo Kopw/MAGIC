@@ -1,57 +1,79 @@
 'use client'
 
 /**
- * Message List Module - 虚拟滚动消息列表
+ * Message List Module - virtualized chat message list.
  *
- * 整合 TanStack Virtual + 消息渲染 + 无限滚动
- * 简单直接，无过度封装
+ * Combines TanStack Virtual with streaming message rendering and explicit
+ * scroll anchoring so reading history is not interrupted by new messages.
  *
  * @module modules/message-list
  */
 
-import { useRef, useEffect, useState, useCallback } from 'react'
+import { useRef, useEffect, useCallback, useLayoutEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useChatStore } from '@/features/chat/store/chat.store'
 import { ChatMessage } from '@/features/chat/components/ChatMessage'
 
+const NEAR_BOTTOM_THRESHOLD = 100
+
+interface ScrollSnapshot {
+  scrollTop: number
+  scrollHeight: number
+  clientHeight: number
+  distanceFromBottom: number
+  isNearBottom: boolean
+}
+
+function readScrollSnapshot(container: HTMLDivElement): ScrollSnapshot {
+  const { scrollTop, scrollHeight, clientHeight } = container
+  const distanceFromBottom = scrollHeight - scrollTop - clientHeight
+
+  return {
+    scrollTop,
+    scrollHeight,
+    clientHeight,
+    distanceFromBottom,
+    isNearBottom: distanceFromBottom <= NEAR_BOTTOM_THRESHOLD,
+  }
+}
+
 export function MessageList() {
   const params = useParams()
   const conversationId = params.conversationId as string
-  
-  // 从 Store 获取数据
+
   const messages = useChatStore((s) => s.messages)
   const isSendingMessage = useChatStore((s) => s.isSendingMessage)
   const isLoadingMessages = useChatStore((s) => s.isLoadingMessages)
   const streamingMessageId = useChatStore((s) => s.streamingMessageId)
-  
-  // 获取流式消息的内容长度，用于触发滚动
+
   const streamingContentLength = useChatStore((s) => {
     if (!s.streamingMessageId) return 0
-    const msg = s.messages.find(m => m.id === s.streamingMessageId)
+    const msg = s.messages.find((m) => m.id === s.streamingMessageId)
     if (!msg) return 0
     return (msg.content?.length || 0) + (msg.thinking?.length || 0)
   })
-  
-  // 滚动容器
+
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-  
-  // 用户是否主动上滑
-  const [userScrolledUp, setUserScrolledUp] = useState(false)
+  const scrollSnapshotRef = useRef<ScrollSnapshot | null>(null)
+  const shouldFollowBottomRef = useRef(true)
   const previousMessagesLength = useRef(0)
   const previousConversationId = useRef<string | null>(null)
-  
-  // 检查消息数组是否有重复 ID（调试用）
+  const shouldScrollAfterLoad = useRef(true)
+  const scrollToBottomFrameRef = useRef<number | null>(null)
+  const restoreScrollFrameRef = useRef<number | null>(null)
+  const scrollAfterLoadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const userScrollVersionRef = useRef(0)
+  const programmaticScrollTopRef = useRef<number | null>(null)
+
   useEffect(() => {
-    const ids = messages.map(m => m.id)
+    const ids = messages.map((m) => m.id)
     const uniqueIds = new Set(ids)
     if (ids.length !== uniqueIds.size) {
       console.warn('[MessageList] Duplicate message IDs detected!', ids)
     }
   }, [messages])
-  
-  // TanStack Virtual 配置
-  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual drives this list; React Compiler can safely skip this component.
+
   const virtualizer = useVirtualizer({
     count: messages.length,
     getScrollElement: () => scrollContainerRef.current,
@@ -65,91 +87,179 @@ export function MessageList() {
     },
     overscan: 3,
   })
-  
+
   const virtualItems = virtualizer.getVirtualItems()
-  
-  // ========== 滚动到底部 ==========
+
+  const updateScrollSnapshot = useCallback((container = scrollContainerRef.current) => {
+    if (!container) return null
+
+    const snapshot = readScrollSnapshot(container)
+    scrollSnapshotRef.current = snapshot
+    return snapshot
+  }, [])
+
+  const setProgrammaticScrollTop = useCallback((
+    container: HTMLDivElement,
+    scrollTop: number
+  ) => {
+    container.scrollTop = scrollTop
+    programmaticScrollTopRef.current = container.scrollTop
+    updateScrollSnapshot(container)
+  }, [updateScrollSnapshot])
+
   const scrollToBottom = useCallback(() => {
     const container = scrollContainerRef.current
-    if (!container) return
-    
-    container.scrollTop = container.scrollHeight
-    
-    requestAnimationFrame(() => {
-      container.scrollTop = container.scrollHeight
+    if (!container || !shouldFollowBottomRef.current) return
+
+    setProgrammaticScrollTop(container, container.scrollHeight)
+
+    if (scrollToBottomFrameRef.current !== null) {
+      cancelAnimationFrame(scrollToBottomFrameRef.current)
+    }
+
+    scrollToBottomFrameRef.current = requestAnimationFrame(() => {
+      scrollToBottomFrameRef.current = null
+      if (!shouldFollowBottomRef.current) return
+
+      setProgrammaticScrollTop(container, container.scrollHeight)
     })
-  }, [])
-  
-  // ========== 监听用户滚动 ==========
+  }, [setProgrammaticScrollTop])
+
+  const restoreScrollPosition = useCallback((snapshot: ScrollSnapshot) => {
+    const container = scrollContainerRef.current
+    if (!container) return
+
+    const userScrollVersion = userScrollVersionRef.current
+
+    setProgrammaticScrollTop(container, snapshot.scrollTop)
+
+    if (restoreScrollFrameRef.current !== null) {
+      cancelAnimationFrame(restoreScrollFrameRef.current)
+    }
+
+    restoreScrollFrameRef.current = requestAnimationFrame(() => {
+      restoreScrollFrameRef.current = null
+      if (userScrollVersionRef.current !== userScrollVersion) return
+
+      setProgrammaticScrollTop(container, snapshot.scrollTop)
+    })
+  }, [setProgrammaticScrollTop])
+
   useEffect(() => {
     const container = scrollContainerRef.current
     if (!container) return
-    
+
+    updateScrollSnapshot(container)
+
     const handleScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = container
-      const distanceFromBottom = scrollHeight - scrollTop - clientHeight
-      setUserScrolledUp(distanceFromBottom > 100)
+      const snapshot = updateScrollSnapshot(container)
+      const programmaticScrollTop = programmaticScrollTopRef.current
+      programmaticScrollTopRef.current = null
+
+      if (
+        programmaticScrollTop !== null &&
+        Math.abs(container.scrollTop - programmaticScrollTop) <= 1
+      ) {
+        return
+      }
+
+      userScrollVersionRef.current += 1
+      if (scrollToBottomFrameRef.current !== null) {
+        cancelAnimationFrame(scrollToBottomFrameRef.current)
+        scrollToBottomFrameRef.current = null
+      }
+      if (restoreScrollFrameRef.current !== null) {
+        cancelAnimationFrame(restoreScrollFrameRef.current)
+        restoreScrollFrameRef.current = null
+      }
+      if (snapshot) {
+        shouldFollowBottomRef.current = snapshot.isNearBottom
+      }
     }
-    
+
     container.addEventListener('scroll', handleScroll, { passive: true })
-    return () => container.removeEventListener('scroll', handleScroll)
-  }, [])
-  
-  // 是否需要在加载完成后滚动
-  const shouldScrollAfterLoad = useRef(false)
-  
-  // ========== 切换会话时重置状态 ==========
-  useEffect(() => {
+    return () => {
+      container.removeEventListener('scroll', handleScroll)
+      if (scrollToBottomFrameRef.current !== null) {
+        cancelAnimationFrame(scrollToBottomFrameRef.current)
+        scrollToBottomFrameRef.current = null
+      }
+      if (restoreScrollFrameRef.current !== null) {
+        cancelAnimationFrame(restoreScrollFrameRef.current)
+        restoreScrollFrameRef.current = null
+      }
+    }
+  }, [updateScrollSnapshot])
+
+  useLayoutEffect(() => {
     if (!conversationId) return
-    
+
     if (previousConversationId.current !== conversationId) {
       previousConversationId.current = conversationId
       previousMessagesLength.current = 0
-      setUserScrolledUp(false)
+      scrollSnapshotRef.current = null
+      shouldFollowBottomRef.current = true
       shouldScrollAfterLoad.current = true
     }
   }, [conversationId])
-  
-  // ========== 消息加载完成后滚动到底部 ==========
+
   useEffect(() => {
     if (shouldScrollAfterLoad.current && !isLoadingMessages && messages.length > 0) {
       shouldScrollAfterLoad.current = false
-      // 延迟一下等虚拟列表渲染完
-      setTimeout(() => {
+      shouldFollowBottomRef.current = true
+      scrollAfterLoadTimeoutRef.current = setTimeout(() => {
+        scrollAfterLoadTimeoutRef.current = null
         scrollToBottom()
       }, 50)
     }
+
+    return () => {
+      if (scrollAfterLoadTimeoutRef.current !== null) {
+        clearTimeout(scrollAfterLoadTimeoutRef.current)
+        scrollAfterLoadTimeoutRef.current = null
+      }
+    }
   }, [isLoadingMessages, messages.length, scrollToBottom])
-  
-  // ========== 新消息时滚动 ==========
-  useEffect(() => {
+
+  useLayoutEffect(() => {
     if (messages.length === 0) return
-    
+
     const isNewMessage = messages.length > previousMessagesLength.current
     previousMessagesLength.current = messages.length
-    
-    if (!isNewMessage) return
-    
-    if (isSendingMessage || !userScrolledUp) {
-      if (isSendingMessage) {
-        setUserScrolledUp(false)
-      }
+
+    if (!isNewMessage || shouldScrollAfterLoad.current) return
+
+    const snapshot = scrollSnapshotRef.current
+    if (!snapshot || snapshot.isNearBottom) {
+      shouldFollowBottomRef.current = true
       scrollToBottom()
+      return
     }
-  }, [messages.length, isSendingMessage, userScrolledUp, scrollToBottom])
-  
-  // ========== 流式更新时滚动 ==========
-  useEffect(() => {
-    if (!streamingMessageId || userScrolledUp) return
-    scrollToBottom()
-  }, [streamingContentLength, streamingMessageId, userScrolledUp, scrollToBottom])
-  
-  // 空状态
+
+    shouldFollowBottomRef.current = false
+    restoreScrollPosition(snapshot)
+  }, [messages.length, restoreScrollPosition, scrollToBottom])
+
+  useLayoutEffect(() => {
+    if (!streamingMessageId) return
+
+    const snapshot = scrollSnapshotRef.current
+    if (!snapshot) return
+
+    if (shouldFollowBottomRef.current && snapshot.isNearBottom) {
+      scrollToBottom()
+      return
+    }
+
+    shouldFollowBottomRef.current = false
+    restoreScrollPosition(snapshot)
+  }, [streamingContentLength, streamingMessageId, restoreScrollPosition, scrollToBottom])
+
   if (messages.length === 0 && !isSendingMessage && !isLoadingMessages) {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="text-center">
-          <h1 className="text-[32px] font-normal text-[hsl(var(--text-primary))] mb-8">
+          <h1 className="mb-8 text-[32px] font-normal text-[hsl(var(--text-primary))]">
             我能帮你什么？
           </h1>
         </div>
@@ -160,8 +270,8 @@ export function MessageList() {
   return (
     <div
       ref={scrollContainerRef}
-      className="flex-1 overflow-y-auto custom-scrollbar-auto"
-      style={{ overflowAnchor: 'auto' }}
+      className="custom-scrollbar-auto flex-1 overflow-y-auto"
+      style={{ overflowAnchor: 'none' }}
     >
       <div
         style={{
@@ -172,7 +282,7 @@ export function MessageList() {
       >
         {virtualItems.map((virtualItem) => {
           const message = messages[virtualItem.index]
-          
+
           if (!message) {
             console.warn('[MessageList] Missing message at index:', virtualItem.index)
             return null
