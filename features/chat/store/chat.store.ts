@@ -6,7 +6,13 @@
  */
 
 import { create } from 'zustand'
-import type { Message, AbortReason, StreamingPhase } from '@/features/chat/types/chat'
+import type {
+  Message,
+  AbortReason,
+  StreamingPhase,
+  StructuredOutputIssue,
+  StructuredOutputStatus,
+} from '@/features/chat/types/chat'
 import { getDefaultModel, getModelById } from '@/features/chat/constants/models'
 import { StorageManager, STORAGE_KEYS } from '@/lib/utils/storage'
 
@@ -39,6 +45,11 @@ interface ChatActions {
   updateMessage: (id: string, updates: Partial<Message>) => void
   appendThinking: (id: string, chunk: string) => void
   appendContent: (id: string, chunk: string) => void
+  setStructuredOutputState: (
+    id: string,
+    status: StructuredOutputStatus,
+    issues?: StructuredOutputIssue[]
+  ) => void
   clearMessages: () => void
   removeMessagesFrom: (index: number) => Message[]
   
@@ -109,6 +120,18 @@ export const useChatStore = create<ChatState & ChatActions>()((set, get) => ({
   appendContent: (id, chunk) => set((s) => ({
     messages: s.messages.map(m => 
       m.id === id ? { ...m, content: (m.content || '') + chunk } : m
+    )
+  })),
+
+  setStructuredOutputState: (id, status, issues) => set((s) => ({
+    messages: s.messages.map(m =>
+      m.id === id
+        ? {
+            ...m,
+            structuredOutputStatus: status,
+            structuredOutputIssues: issues ?? m.structuredOutputIssues,
+          }
+        : m
     )
   })),
   

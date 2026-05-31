@@ -201,6 +201,41 @@ export type MessageDisplayState =
   | 'regenerating'
 
 /**
+ * 结构化输出幻觉检测状态
+ * @description 仅用于前端运行时 UI，不持久化到数据库
+ */
+export type StructuredOutputStatus =
+  | 'checking'
+  | 'clean'
+  | 'warning'
+  | 'repairing'
+  | 'repair_failed'
+  | 'ignored'
+
+/**
+ * 结构化输出问题类型
+ */
+export type StructuredOutputIssueKind =
+  | 'invalid_json'
+  | 'schema_mismatch'
+  | 'untrusted_image'
+  | 'unclosed_fence'
+
+/**
+ * 结构化输出检测结果
+ */
+export interface StructuredOutputIssue {
+  id: string
+  kind: StructuredOutputIssueKind
+  language: 'image' | 'chart' | 'weather' | 'markdown'
+  reason: string
+  startOffset: number
+  endOffset: number
+  original: string
+  excerpt: string
+}
+
+/**
  * 文件附件类型
  */
 export interface FileAttachment {
@@ -252,6 +287,10 @@ export interface Message {
   attachments?: FileAttachment[]
   /** 消息显示状态（用于控制 UI 渲染） */
   displayState?: MessageDisplayState
+  /** 结构化输出幻觉检测状态（前端运行时字段，不持久化） */
+  structuredOutputStatus?: StructuredOutputStatus
+  /** 结构化输出幻觉检测问题（前端运行时字段，不持久化） */
+  structuredOutputIssues?: StructuredOutputIssue[]
 }
 
 /**

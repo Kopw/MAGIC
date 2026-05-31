@@ -13,6 +13,8 @@ import { useParams } from 'next/navigation'
 import { useChatStore } from '@/features/chat/store/chat.store'
 import { ChatService } from '@/features/chat/services/chat.service'
 import { ChatMessageUI } from './ChatMessageUI'
+import { saveIgnoredStructuredIssueIds } from '@/features/chat/utils/structured-output-detector'
+import type { StructuredOutputIssue } from '@/features/chat/types/chat'
 
 interface ChatMessageProps {
   messageId: string
@@ -51,6 +53,18 @@ export function ChatMessage({ messageId }: ChatMessageProps) {
     ? (newContent: string) => ChatService.editAndResend(conversationId, messageId, newContent) 
     : undefined
 
+  const handleRepairStructuredOutput = isAIMessage
+    ? (issue: StructuredOutputIssue) => ChatService.repairStructuredOutputChunk(messageId, issue)
+    : undefined
+
+  const handleIgnoreStructuredOutput = isAIMessage
+    ? () => {
+        const issueIds = message.structuredOutputIssues?.map((issue) => issue.id) || []
+        saveIgnoredStructuredIssueIds(messageId, issueIds)
+        useChatStore.getState().setStructuredOutputState(messageId, 'ignored', [])
+      }
+    : undefined
+
   return (
     <ChatMessageUI
       message={message}
@@ -60,6 +74,8 @@ export function ChatMessage({ messageId }: ChatMessageProps) {
       isLastAssistantMessage={isLastAssistantMessage}
       onRetry={handleRetry}
       onEdit={handleEdit}
+      onRepairStructuredOutput={handleRepairStructuredOutput}
+      onIgnoreStructuredOutput={handleIgnoreStructuredOutput}
     />
   )
 }

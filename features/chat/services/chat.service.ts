@@ -10,7 +10,14 @@ import { useChatStore } from '@/features/chat/store/chat.store'
 import { ConversationAPI } from '@/lib/services/conversation-api'
 import { SSEParser } from '@/lib/services/sse-parser'
 import { StreamBuffer } from '@/features/chat/utils/stream-buffer'
-import type { Message, FileAttachment } from '@/features/chat/types/chat'
+import { StructuredOutputMonitor } from '@/features/chat/utils/structured-output-monitor'
+import { detectStructuredOutputIssues } from '@/features/chat/utils/structured-output-detector'
+import type {
+  Message,
+  FileAttachment,
+  StructuredOutputIssue,
+  StructuredOutputStatus,
+} from '@/features/chat/types/chat'
 
 // 用于取消请求
 let loadAbortController: AbortController | null = null
@@ -109,6 +116,8 @@ export const ChatService = {
       content: '',
       thinking: '',
       displayState: 'waiting',
+      structuredOutputStatus: 'checking',
+      structuredOutputIssues: [],
     })
     
     try {
@@ -162,6 +171,27 @@ export const ChatService = {
    * 使用 StreamBuffer 批量刷新，优化渲染性能
    */
   async handleStream(reader: ReadableStreamDefaultReader<Uint8Array>, messageId: string): Promise<void> {
+    const setStructuredOutputState = (
+      status: StructuredOutputStatus,
+      issues: StructuredOutputIssue[] = []
+    ) => useChatStore.getState().setStructuredOutputState(messageId, status, issues)
+
+    const structuredMonitor = new StructuredOutputMonitor({
+      messageId,
+      onIssues: (issues, final) => {
+        if (issues.length > 0) {
+          setStructuredOutputState('warning', issues)
+        } else if (final) {
+          setStructuredOutputState('clean', [])
+        } else {
+          const status = useChatStore.getState().messages.find((m) => m.id === messageId)?.structuredOutputStatus
+          if (status === 'warning') {
+            setStructuredOutputState('checking', [])
+          }
+        }
+      },
+    })
+
     // 创建两个独立的 buffer：thinking 和 answer
     const thinkingBuffer = new StreamBuffer({
       onFlush: (content) => useChatStore.getState().appendThinking(messageId, content)
@@ -187,6 +217,7 @@ export const ChatService = {
               s.startStreaming(messageId, 'answer')
               s.updateMessage(messageId, { displayState: 'streaming' })
             }
+            structuredMonitor.append(data.content)
             answerBuffer.append(data.content) // 使用 buffer 而非直接 setState
           } else if (data.type === 'context_usage' && data.contextUsage) {
             s.updateMessage(messageId, { contextUsage: data.contextUsage })
@@ -235,6 +266,7 @@ export const ChatService = {
             
             // 图片生成完成时，直接插入图片到 content 流的当前位置
             if (data.name === 'generate_image' && data.success && data.imageUrl) {
+              structuredMonitor.trustImageUrl(data.imageUrl)
               const imageData = JSON.stringify({
                 url: data.imageUrl,
                 alt: invocations.find(inv => inv.toolCallId === data.toolCallId)?.args?.prompt || '生成的图片',
@@ -242,7 +274,9 @@ export const ChatService = {
                 height: data.height || 512,
               })
               // 插入 image 代码块到 content（通过 buffer）
-              answerBuffer.append(`\n\`\`\`image\n${imageData}\n\`\`\`\n`)
+              const imageBlock = `\n\`\`\`image\n${imageData}\n\`\`\`\n`
+              structuredMonitor.append(imageBlock)
+              answerBuffer.append(imageBlock)
             }
             
             s.updateMessage(messageId, {
@@ -252,6 +286,8 @@ export const ChatService = {
             // 流结束前强制刷新 buffer
             thinkingBuffer.forceFlush()
             answerBuffer.forceFlush()
+            const content = useChatStore.getState().messages.find((m) => m.id === messageId)?.content || ''
+            structuredMonitor.finalize(content)
             s.stopStreaming()
             s.updateMessage(messageId, { displayState: 'idle' })
           }
@@ -262,6 +298,8 @@ export const ChatService = {
           thinkingBuffer.forceFlush()
           answerBuffer.forceFlush()
           const s = useChatStore.getState()
+          const content = s.messages.find((m) => m.id === messageId)?.content || ''
+          structuredMonitor.finalize(content)
           s.updateMessage(messageId, { hasError: true, displayState: 'error' })
           s.stopStreaming()
         },
@@ -270,6 +308,8 @@ export const ChatService = {
           thinkingBuffer.forceFlush()
           answerBuffer.forceFlush()
           const s = useChatStore.getState()
+          const content = s.messages.find((m) => m.id === messageId)?.content || ''
+          structuredMonitor.finalize(content)
           s.stopStreaming()
           s.updateMessage(messageId, { displayState: 'idle' })
         },
@@ -278,6 +318,60 @@ export const ChatService = {
       // 清理资源
       thinkingBuffer.destroy()
       answerBuffer.destroy()
+      structuredMonitor.destroy()
+    }
+  },
+
+  /**
+   * 局部修复结构化输出 Chunk
+   */
+  async repairStructuredOutputChunk(
+    messageId: string,
+    issue: StructuredOutputIssue
+  ): Promise<void> {
+    const store = useChatStore.getState()
+    const message = store.messages.find((m) => m.id === messageId)
+    if (!message) return
+
+    store.setStructuredOutputState(messageId, 'repairing', [issue])
+
+    try {
+      const response = await fetch(`/api/message/${messageId}/repair-chunk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          issueId: issue.id,
+          kind: issue.kind,
+          language: issue.language,
+          reason: issue.reason,
+          startOffset: issue.startOffset,
+          endOffset: issue.endOffset,
+          original: issue.original,
+          model: store.selectedModel,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Repair failed: ${response.status}`)
+      }
+
+      const result = (await response.json()) as { content?: string; trustedImageUrl?: string }
+      if (!result.content) throw new Error('Repair response missing content')
+
+      const trustedImageUrls = getTrustedImageUrls(message, result.trustedImageUrl)
+      const issues = detectStructuredOutputIssues(result.content, {
+        trustedImageUrls,
+        final: true,
+      })
+      store.updateMessage(messageId, { content: result.content })
+      store.setStructuredOutputState(
+        messageId,
+        issues.length > 0 ? 'warning' : 'clean',
+        issues
+      )
+    } catch (error) {
+      console.error('[ChatService] repairStructuredOutputChunk failed:', error)
+      store.setStructuredOutputState(messageId, 'repair_failed', [issue])
     }
   },
 
@@ -344,4 +438,26 @@ export const ChatService = {
     // 发送新内容
     await this.sendMessage(conversationId, newContent, { createUserMessage: true })
   },
+}
+
+function getTrustedImageUrls(message: Message, extraUrl?: string): string[] {
+  const urls = new Set<string>()
+
+  if (extraUrl) urls.add(extraUrl)
+
+  for (const result of message.toolResults || []) {
+    const imageUrl = result.result.imageUrl
+    if (result.name === 'generate_image' && typeof imageUrl === 'string') {
+      urls.add(imageUrl)
+    }
+  }
+
+  for (const invocation of message.toolInvocations || []) {
+    const imageUrl = invocation.result?.imageUrl
+    if (invocation.name === 'generate_image' && typeof imageUrl === 'string') {
+      urls.add(imageUrl)
+    }
+  }
+
+  return Array.from(urls)
 }

@@ -12,12 +12,20 @@ import { ThinkingPanel } from '@/features/chat/components/ThinkingPanel'
 import { MessageContent } from '@/features/chat/components/MessageContent'
 import { MessageActions } from '@/features/chat/components/MessageActions'
 import { MessageEdit } from '@/features/chat/components/MessageEdit'
+import { StructuredOutputNotice } from '@/features/chat/components/StructuredOutputNotice'
 import { Button } from '@/components/ui/button'
 import { Loader2, Edit2, RotateCw, ChevronDown, ChevronRight, Globe, XCircle, BookOpen, Gauge } from 'lucide-react'
 import { MarkdownIcon } from '@/components/icons/MarkdownIcon'
 import { TextFileIcon } from '@/components/icons/TextFileIcon'
 import { cn } from '@/lib/utils'
-import type { Message, RagMessageContext, ToolInvocation, ToolResult, SearchSource } from '@/features/chat/types/chat'
+import type {
+  Message,
+  RagMessageContext,
+  ToolInvocation,
+  ToolResult,
+  SearchSource,
+  StructuredOutputIssue,
+} from '@/features/chat/types/chat'
 import type { ContextUsage } from '@/lib/types/context-usage'
 
 /**
@@ -280,6 +288,12 @@ interface ChatMessageUIProps {
   
   /** 编辑并重新发送回调 */
   onEdit?: (newContent: string) => void
+
+  /** 局部修复结构化输出回调 */
+  onRepairStructuredOutput?: (issue: StructuredOutputIssue) => void
+
+  /** 忽略结构化输出问题回调 */
+  onIgnoreStructuredOutput?: () => void
 }
 
 /**
@@ -295,6 +309,8 @@ export function ChatMessageUI({
   isStreamingAnswer,
   onRetry,
   onEdit,
+  onRepairStructuredOutput,
+  onIgnoreStructuredOutput,
 }: ChatMessageUIProps) {
   const isUser = message.role === 'user'
   const [isEditing, setIsEditing] = useState(false)
@@ -445,6 +461,15 @@ export function ChatMessageUI({
           {message.ragContext && <RagSources ragContext={message.ragContext} />}
 
           {message.contextUsage && <MessageContextUsage usage={message.contextUsage} />}
+
+          <StructuredOutputNotice
+            status={message.structuredOutputStatus}
+            issues={message.structuredOutputIssues}
+            isStreaming={isActuallyStreaming}
+            onRepair={onRepairStructuredOutput}
+            onRetry={onRetry}
+            onIgnore={onIgnoreStructuredOutput}
+          />
 
           {isActuallyStreaming && onRetry ? (
             <div className="flex items-center gap-1">

@@ -26,6 +26,7 @@ export const STORAGE_KEYS = {
   UI: {
     SIDEBAR_COLLAPSED: 'ui-sidebar-collapsed',
     THEME_PREFERENCE: 'ui-theme-preference',
+    IGNORED_STRUCTURED_OUTPUT_ISSUES_PREFIX: 'ui-ignored-structured-output-issues',
   },
 } as const
 
