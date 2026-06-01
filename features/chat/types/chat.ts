@@ -219,6 +219,7 @@ export type StructuredOutputIssueKind =
   | 'invalid_json'
   | 'schema_mismatch'
   | 'untrusted_image'
+  | 'field_order_mismatch'
   | 'unclosed_fence'
 
 /**

@@ -32,6 +32,11 @@ interface CodeBlockMatch {
 
 const STRUCTURED_LANGUAGES = new Set(['image', 'chart', 'weather'])
 const FENCE_PATTERN = /```/g
+const FIELD_ORDER_BY_LANGUAGE = {
+  image: ['url', 'alt', 'width', 'height'],
+  chart: ['type', 'title', 'labels', 'values'],
+  weather: ['city', 'temp', 'condition', 'humidity', 'wind'],
+} satisfies Record<Exclude<StructuredLanguage, 'markdown'>, string[]>
 
 export function detectStructuredOutputIssues(
   content: string,
@@ -186,7 +191,7 @@ function validateImageBlock(
     })]
   }
 
-  return []
+  return validateFieldOrder(block, parsed.value)
 }
 
 function validateChartBlock(block: CodeBlockMatch): StructuredOutputIssue[] {
@@ -219,7 +224,7 @@ function validateChartBlock(block: CodeBlockMatch): StructuredOutputIssue[] {
     })]
   }
 
-  return []
+  return validateFieldOrder(block, parsed.value)
 }
 
 function validateWeatherBlock(block: CodeBlockMatch): StructuredOutputIssue[] {
@@ -258,7 +263,30 @@ function validateWeatherBlock(block: CodeBlockMatch): StructuredOutputIssue[] {
     })]
   }
 
-  return []
+  return validateFieldOrder(block, parsed.value)
+}
+
+function validateFieldOrder(
+  block: CodeBlockMatch,
+  parsed: Record<string, unknown>
+): StructuredOutputIssue[] {
+  if (block.language === 'markdown') return []
+
+  const expectedOrder = FIELD_ORDER_BY_LANGUAGE[block.language]
+  const actualKnownFields = Object.keys(parsed).filter((key) => expectedOrder.includes(key))
+  const expectedKnownFields = expectedOrder.filter((key) => Object.hasOwn(parsed, key))
+  if (actualKnownFields.length <= 1 || arraysEqual(actualKnownFields, expectedKnownFields)) {
+    return []
+  }
+
+  return [createIssue({
+    kind: 'field_order_mismatch',
+    language: block.language,
+    reason: `${getLanguageLabel(block.language)}字段顺序不正确：应为 ${expectedOrder.join('、')}`,
+    startOffset: block.startOffset,
+    endOffset: block.endOffset,
+    original: block.original,
+  })]
 }
 
 function validateMarkdownImages(
@@ -334,6 +362,18 @@ function normalizeLanguage(language: string | null | undefined): StructuredLangu
   const normalized = language?.trim().toLowerCase()
   if (!normalized || !STRUCTURED_LANGUAGES.has(normalized)) return null
   return normalized as StructuredLanguage
+}
+
+function arraysEqual(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false
+  return left.every((item, index) => item === right[index])
+}
+
+function getLanguageLabel(language: StructuredLanguage): string {
+  if (language === 'image') return '图片块'
+  if (language === 'chart') return '图表块'
+  if (language === 'weather') return '天气块'
+  return 'Markdown'
 }
 
 function hasUnclosedFence(content: string): boolean {

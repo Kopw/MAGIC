@@ -16,7 +16,13 @@ import { downloadAndSave } from '@/server/services/image/storage'
 
 const repairRequestSchema = z.object({
   issueId: z.string().min(1),
-  kind: z.enum(['invalid_json', 'schema_mismatch', 'untrusted_image', 'unclosed_fence']),
+  kind: z.enum([
+    'invalid_json',
+    'schema_mismatch',
+    'untrusted_image',
+    'field_order_mismatch',
+    'unclosed_fence',
+  ]),
   language: z.enum(['image', 'chart', 'weather', 'markdown']),
   reason: z.string().min(1),
   startOffset: z.number().int().min(0),
@@ -33,6 +39,11 @@ interface RepairPayload {
 }
 
 const DEFAULT_MODEL = 'Qwen/Qwen2.5-7B-Instruct'
+const FIELD_ORDER_BY_LANGUAGE = {
+  image: ['url', 'alt', 'width', 'height'],
+  chart: ['type', 'title', 'labels', 'values'],
+  weather: ['city', 'temp', 'condition', 'humidity', 'wind'],
+} satisfies Record<Exclude<RepairRequest['language'], 'markdown'>, string[]>
 
 export async function POST(
   request: NextRequest,
@@ -77,19 +88,20 @@ export async function POST(
       )
     }
 
-    const apiKey = user.apiKey || process.env.SILICONFLOW_API_KEY || process.env.OPENAI_API_KEY
-    if (!apiKey) {
-      return NextResponse.json({ error: 'API Key not configured' }, { status: 400 })
-    }
-
-    const repair = await repairChunk({
-      apiKey,
-      issue: body,
-      content: message.content,
-    })
+    const repair =
+      body.kind === 'field_order_mismatch'
+        ? repairFieldOrderChunk(body)
+        : null
+    const apiRepair = repair
+      ? { replacement: repair }
+      : await repairChunk({
+          apiKey: getRepairApiKey(user.apiKey),
+          issue: body,
+          content: message.content,
+        })
     const nextContent =
       message.content.slice(0, body.startOffset) +
-      repair.replacement +
+      apiRepair.replacement +
       message.content.slice(body.endOffset)
 
     await MessageRepository.update(messageId, { content: nextContent })
@@ -98,8 +110,8 @@ export async function POST(
     return NextResponse.json({
       success: true,
       issueId: body.issueId,
-      replacement: repair.replacement,
-      trustedImageUrl: repair.trustedImageUrl,
+      replacement: apiRepair.replacement,
+      trustedImageUrl: apiRepair.trustedImageUrl,
       content: nextContent,
     })
   } catch (error) {
@@ -114,9 +126,21 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    if (error instanceof Error && error.message === 'API Key not configured') {
+      return NextResponse.json({ error: 'API Key not configured' }, { status: 400 })
+    }
+
     console.error('[Message RepairChunk] Error:', error)
     return NextResponse.json({ error: '修复失败' }, { status: 500 })
   }
+}
+
+function getRepairApiKey(userApiKey?: string | null): string {
+  const apiKey = userApiKey || process.env.SILICONFLOW_API_KEY || process.env.OPENAI_API_KEY
+  if (!apiKey) {
+    throw new Error('API Key not configured')
+  }
+  return apiKey
 }
 
 async function repairChunk(input: {
@@ -124,6 +148,13 @@ async function repairChunk(input: {
   issue: RepairRequest
   content: string
 }): Promise<RepairPayload> {
+  if (input.issue.kind === 'field_order_mismatch') {
+    const fieldOrderRepair = repairFieldOrderChunk(input.issue)
+    return {
+      replacement: fieldOrderRepair ?? await repairTextChunk(input.apiKey, input.issue, input.content),
+    }
+  }
+
   if (input.issue.language === 'image') {
     const imageRepair = await tryRepairImageChunk(input.issue, input.content)
     if (imageRepair) return imageRepair
@@ -213,6 +244,10 @@ async function tryRepairImageChunk(
 }
 
 function getSchemaInstruction(issue: RepairRequest): string {
+  if (issue.kind === 'field_order_mismatch') {
+    return 'For field order issues, preserve all values and return the same fenced block with top-level JSON fields in the requested order.'
+  }
+
   if (issue.language === 'chart') {
     return [
       'For chart blocks, return exactly a fenced chart block:',
@@ -269,6 +304,48 @@ function extractImagePrompt(chunk: string): string | null {
 function extractFencedBody(chunk: string): string | null {
   const match = /```[A-Za-z0-9_-]*\s*\n([\s\S]*?)\n```/.exec(chunk)
   return match?.[1]?.trim() || null
+}
+
+function repairFieldOrderChunk(issue: RepairRequest): string | null {
+  if (issue.language === 'markdown') return null
+
+  const jsonText = extractFencedBody(issue.original)
+  if (!jsonText) return null
+
+  try {
+    const parsed = JSON.parse(jsonText) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+
+    const reordered = reorderObjectFields(
+      parsed as Record<string, unknown>,
+      FIELD_ORDER_BY_LANGUAGE[issue.language]
+    )
+
+    return `\`\`\`${issue.language}\n${JSON.stringify(reordered)}\n\`\`\``
+  } catch {
+    return null
+  }
+}
+
+function reorderObjectFields(
+  value: Record<string, unknown>,
+  preferredOrder: string[]
+): Record<string, unknown> {
+  const reordered: Record<string, unknown> = {}
+
+  for (const key of preferredOrder) {
+    if (Object.hasOwn(value, key)) {
+      reordered[key] = value[key]
+    }
+  }
+
+  for (const key of Object.keys(value)) {
+    if (!preferredOrder.includes(key)) {
+      reordered[key] = value[key]
+    }
+  }
+
+  return reordered
 }
 
 function extractNearbyPrompt(content: string, startOffset: number, endOffset: number): string | null {
