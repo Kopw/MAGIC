@@ -2,66 +2,131 @@
 
 /**
  * Message Content Component - 消息内容渲染器
- * 
+ *
  * 负责渲染 Markdown 格式的消息内容
  * 支持：
  * - GFM (GitHub Flavored Markdown)
  * - 代码高亮
  * - 流式传输时的光标显示（智能避开代码块）
  * - 流式传输时延迟渲染未闭合的代码块
- * 
+ *
  * @module components/MessageContent
  */
 
-import { useMemo } from 'react'
+import { Component, useMemo, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import rehypeRaw from 'rehype-raw'
 import { rehypeCursor } from '@/features/chat/utils/rehype-cursor'
+import {
+  analyzeMarkdownRenderSafety,
+  type MarkdownFallbackReason,
+} from '@/lib/utils/markdown-render-safety'
 import { createMarkdownComponents } from './MarkdownComponents'
 
 interface MessageContentProps {
   /** 消息内容（Markdown 格式） */
   content: string
-  
+
   /** 是否正在流式传输 */
   isStreaming?: boolean
-  
+
   /** 是否显示光标（默认 true） */
   showCursor?: boolean
 }
 
+interface MarkdownRenderBoundaryProps {
+  children: ReactNode
+  content: string
+  resetKey: string
+}
+
+interface MarkdownRenderBoundaryState {
+  hasError: boolean
+}
+
+class MarkdownRenderBoundary extends Component<
+  MarkdownRenderBoundaryProps,
+  MarkdownRenderBoundaryState
+> {
+  state: MarkdownRenderBoundaryState = { hasError: false }
+
+  static getDerivedStateFromError(): MarkdownRenderBoundaryState {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('[MessageContent] Markdown render failed:', error)
+  }
+
+  componentDidUpdate(previousProps: MarkdownRenderBoundaryProps) {
+    if (previousProps.resetKey !== this.props.resetKey && this.state.hasError) {
+      this.setState({ hasError: false })
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <PlainTextFallback content={this.props.content} reason="render_error" />
+      )
+    }
+
+    return this.props.children
+  }
+}
+
 /**
  * 预处理流式内容
- * 
+ *
  * 检测未闭合的代码块，补上闭合标记让 ReactMarkdown 能正常解析
  * 这样 ChartBlock/WeatherBlock 的占位逻辑就能生效
- * 
+ *
  * @param content - 原始内容
  * @param isStreaming - 是否正在流式传输
  * @returns 处理后的内容
  */
-function preprocessStreamingContent(content: string, isStreaming: boolean): string {
+function preprocessStreamingContent(
+  content: string,
+  isStreaming: boolean
+): string {
   if (!isStreaming || !content) return content
-  
+
   // 统计代码块的开始和结束
   const codeBlockPattern = /```/g
   const matches = content.match(codeBlockPattern)
   const count = matches?.length || 0
-  
+
   // 如果没有代码块或代码块数量是偶数（都闭合了），直接返回
   if (count === 0 || count % 2 === 0) {
     return content
   }
-  
+
   // 有未闭合的代码块，在末尾补上闭合标记
   return content + '\n```'
 }
 
+function PlainTextFallback({
+  content,
+  reason: _reason,
+}: {
+  content: string
+  reason?: MarkdownFallbackReason
+}) {
+  return (
+    <div>
+      <div className="markdown-fallback-notice">
+        Markdown 格式异常，已切换为纯文本显示
+      </div>
+      <pre className="markdown-plain-text">{content}</pre>
+    </div>
+  )
+}
+
 /**
  * 消息内容组件
- * 
+ *
  * 渲染 Markdown 内容，支持流式传输时显示光标
  * 光标会智能地只出现在文本末尾，避免在代码块中显示
  */
@@ -73,43 +138,61 @@ export function MessageContent({
   // 渲染计数器（开发环境统计用，暂时注释）
   // const renderCount = useRef(0)
   // renderCount.current++
-  // 
+  //
   // useEffect(() => {
   //   if (process.env.NODE_ENV === 'development') {
   //     console.log(`[MessageContent] render #${renderCount.current}, content length: ${content.length}, isStreaming: ${isStreaming}`)
   //   }
   // })
-  
+
   // 光标功能暂时禁用，bug 较多
   // const shouldShowCursor = isStreaming && showCursor
   const shouldShowCursor = false
-  
+
   // 根据流式状态创建 markdown 组件
   const markdownComponents = useMemo(
     () => createMarkdownComponents(isStreaming),
     [isStreaming]
   )
-  
+
   // 预处理内容：流式时延迟渲染未闭合的代码块
   const processedContent = useMemo(
     () => preprocessStreamingContent(content, isStreaming),
     [content, isStreaming]
   )
-  
+
+  const safety = useMemo(
+    () => analyzeMarkdownRenderSafety(processedContent, { isStreaming }),
+    [processedContent, isStreaming]
+  )
+
+  if (safety.shouldFallback) {
+    return (
+      <div className="prose prose-sm max-w-none dark:prose-invert">
+        <PlainTextFallback content={content} reason={safety.reason} />
+      </div>
+    )
+  }
+
   return (
-    <div className="prose prose-sm dark:prose-invert max-w-none">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[
-          rehypeRaw,
-          rehypeHighlight,
-          // 动态添加光标插件
-          ...(shouldShowCursor ? [rehypeCursor] : []),
-        ]}
-        components={markdownComponents}
+    <div className="prose prose-sm max-w-none dark:prose-invert">
+      <MarkdownRenderBoundary
+        content={content}
+        resetKey={`${isStreaming ? 'streaming' : 'idle'}:${processedContent}`}
       >
-        {processedContent}
-      </ReactMarkdown>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[
+            rehypeRaw,
+            rehypeHighlight,
+            // 动态添加光标插件
+            ...(shouldShowCursor ? [rehypeCursor] : []),
+          ]}
+          components={markdownComponents}
+        >
+          {processedContent}
+        </ReactMarkdown>
+      </MarkdownRenderBoundary>
     </div>
   )
 }
