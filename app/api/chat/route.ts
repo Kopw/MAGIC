@@ -9,6 +9,24 @@ import { getCurrentUserId } from '@/server/auth/utils'
 import { UserRepository } from '@/server/repositories/user.repository'
 import { handleChatRequest, NotFoundError } from '@/server/services/chat'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+export const fetchCache = 'force-no-store'
+export const runtime = 'nodejs'
+
+const SSE_HEADERS = {
+  'Content-Type': 'text/event-stream; charset=utf-8',
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, s-maxage=0, no-transform',
+  'CDN-Cache-Control': 'no-store',
+  'Vercel-CDN-Cache-Control': 'no-store',
+  'Surrogate-Control': 'no-store',
+  Pragma: 'no-cache',
+  Expires: '0',
+  Connection: 'keep-alive',
+  'X-Accel-Buffering': 'no',
+  'X-Content-Type-Options': 'nosniff',
+} as const
+
 export async function POST(req: Request) {
   // 1. 认证校验
   let userId: string
@@ -49,9 +67,7 @@ export async function POST(req: Request) {
     // 5. 返回 SSE 流响应
     return new Response(stream, {
       headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
+        ...SSE_HEADERS,
         'X-Session-ID': sessionId,
         'X-Conversation-ID': conversationId,
         'X-Conversation-Title': encodeURIComponent(conversationTitle),

@@ -64,6 +64,7 @@ export function createSSEStream(
         let answerContent = ''
         let toolCallsData = null
 
+        sendConnectedEvent(controller, encoder)
         sendContextUsageEvent(controller, encoder, context.contextUsage, sessionId)
 
         while (true) {
@@ -157,6 +158,17 @@ function sendEvent(
   }
 }
 
+function sendConnectedEvent(
+  controller: ReadableStreamDefaultController,
+  encoder: TextEncoder
+): void {
+  try {
+    controller.enqueue(encoder.encode(': connected\n\n'))
+  } catch {
+    // Ignore if the stream is already closed.
+  }
+}
+
 function sendContextUsageEvent(
   controller: ReadableStreamDefaultController,
   encoder: TextEncoder,
@@ -242,6 +254,8 @@ export function createSSEStreamWithTools(
       try {
         let thinkingContent = ''
         let finalAnswerContent = ''
+
+        sendConnectedEvent(controller, encoder)
         sendContextUsageEvent(controller, encoder, context.contextUsage, sessionId)
         
         // 累积所有轮次的工具调用和结果

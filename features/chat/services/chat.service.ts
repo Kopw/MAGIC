@@ -126,7 +126,12 @@ export const ChatService = {
       
       const response = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          Accept: 'text/event-stream',
+          'Cache-Control': 'no-cache, no-store',
+          'Content-Type': 'application/json',
+        },
+        cache: 'no-store',
         body: JSON.stringify({
           content,
           conversationId,
