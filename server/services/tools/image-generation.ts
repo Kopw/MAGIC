@@ -12,9 +12,7 @@ import { downloadAndSave } from '@/server/services/image/storage'
  * 支持的图片尺寸
  */
 const SUPPORTED_IMAGE_SIZES = [
-  '1024x1024',
-  '512x1024',
-  '768x512',
+  '512x512',
   '768x1024',
   '1024x576',
   '576x1024',
@@ -23,7 +21,7 @@ const SUPPORTED_IMAGE_SIZES = [
 /**
  * 默认图片尺寸
  */
-const DEFAULT_IMAGE_SIZE = '1024x1024'
+const DEFAULT_IMAGE_SIZE = '512x512'
 
 /**
  * 创建图片生成工具

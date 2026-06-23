@@ -221,14 +221,14 @@ async function tryRepairImageChunk(
   try {
     const result = await generateImage({
       prompt,
-      image_size: '1024x1024',
+      image_size: '512x512',
     })
     const stored = await downloadAndSave(result.url)
     const imageData = JSON.stringify({
       url: stored.localUrl,
       alt: prompt,
-      width: 1024,
-      height: 1024,
+      width: 512,
+      height: 512,
     })
 
     return {

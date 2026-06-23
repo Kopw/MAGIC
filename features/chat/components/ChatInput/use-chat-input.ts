@@ -192,7 +192,7 @@ export function useChatInput({ conversationId }: UseChatInputOptions) {
       if (config.negative_prompt) {
         content += `\n排除内容：${config.negative_prompt}`
       }
-      if (config.image_size && config.image_size !== '1024x1024') {
+      if (config.image_size && config.image_size !== '512x512') {
         content += `\n图片尺寸：${config.image_size}`
       }
       

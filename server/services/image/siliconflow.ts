@@ -42,8 +42,8 @@ interface SiliconFlowResponse {
   }
 }
 
-const DEFAULT_MODEL = 'Kwai-Kolors/Kolors'
-const DEFAULT_IMAGE_SIZE = '1024x1024'
+const DEFAULT_MODEL = 'Tongyi-MAI/Z-Image-Turbo'
+const DEFAULT_IMAGE_SIZE = '512x512'
 const API_ENDPOINT = 'https://api.siliconflow.com/v1/images/generations'
 
 /**

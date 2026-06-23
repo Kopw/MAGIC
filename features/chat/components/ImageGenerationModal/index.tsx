@@ -38,9 +38,8 @@ interface ImageGenerationModalProps {
  * 支持的图片尺寸选项
  */
 const IMAGE_SIZES = [
-  { value: '1024x1024', label: '1:1', desc: '1024×1024' },
+  { value: '512x512', label: '1:1', desc: '512×512' },
   { value: '768x1024', label: '3:4', desc: '768×1024' },
-  { value: '1024x768', label: '4:3', desc: '1024×768' },
   { value: '576x1024', label: '9:16', desc: '576×1024' },
   { value: '1024x576', label: '16:9', desc: '1024×576' },
 ]
@@ -52,7 +51,7 @@ export function ImageGenerationModal({
 }: ImageGenerationModalProps) {
   const [prompt, setPrompt] = useState('')
   const [negativePrompt, setNegativePrompt] = useState('')
-  const [imageSize, setImageSize] = useState('1024x1024')
+  const [imageSize, setImageSize] = useState('512x512')
   const [isGenerating, setIsGenerating] = useState(false)
 
   const canGenerate = prompt.trim().length > 0 && !isGenerating
@@ -70,14 +69,14 @@ export function ImageGenerationModal({
     // 重置状态
     setPrompt('')
     setNegativePrompt('')
-    setImageSize('1024x1024')
+    setImageSize('512x512')
     setIsGenerating(false)
   }
 
   const handleClose = () => {
     setPrompt('')
     setNegativePrompt('')
-    setImageSize('1024x1024')
+    setImageSize('512x512')
     onClose()
   }
 
@@ -125,7 +124,7 @@ export function ImageGenerationModal({
           {/* 尺寸选择 */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">图片尺寸</Label>
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {IMAGE_SIZES.map((size) => (
                 <button
                   key={size.value}
