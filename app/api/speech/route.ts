@@ -48,7 +48,7 @@ export async function POST(req: Request) {
 
     try {
       const response = await fetch(
-        'https://api.siliconflow.cn/v1/audio/transcriptions',
+        'https://api.siliconflow.com/v1/audio/transcriptions',
         {
           method: 'POST',
           headers: {

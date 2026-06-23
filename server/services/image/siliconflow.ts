@@ -44,7 +44,7 @@ interface SiliconFlowResponse {
 
 const DEFAULT_MODEL = 'Kwai-Kolors/Kolors'
 const DEFAULT_IMAGE_SIZE = '1024x1024'
-const API_ENDPOINT = 'https://api.siliconflow.cn/v1/images/generations'
+const API_ENDPOINT = 'https://api.siliconflow.com/v1/images/generations'
 
 /**
  * 生成图片

@@ -1,4 +1,4 @@
-const SILICONFLOW_BASE_URL = 'https://api.siliconflow.cn/v1'
+const SILICONFLOW_BASE_URL = 'https://api.siliconflow.com/v1'
 
 export const DEFAULT_EMBEDDING_MODEL =
   process.env.RAG_EMBEDDING_MODEL || 'Qwen/Qwen3-Embedding-0.6B'

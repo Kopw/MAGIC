@@ -6,7 +6,7 @@
 
 import { getModelById } from '@/features/chat/constants/models'
 
-const SILICONFLOW_API_URL = 'https://api.siliconflow.cn/v1/chat/completions'
+const SILICONFLOW_API_URL = 'https://api.siliconflow.com/v1/chat/completions'
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'

@@ -72,7 +72,7 @@ export async function POST(req: Request) {
 
     // 调用硅基流动 TTS API
     const response = await fetch(
-      'https://api.siliconflow.cn/v1/audio/speech',
+      'https://api.siliconflow.com/v1/audio/speech',
       {
         method: 'POST',
         headers: {
